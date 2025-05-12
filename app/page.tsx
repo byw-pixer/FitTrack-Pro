@@ -475,7 +475,7 @@ export default function FitnessTracker() {
         <header className="mb-8">
           <h1 className="text-3xl font-bold flex items-center gap-2 text-primary">
             <Activity className="h-8 w-8" />
-            ФитТрек Про
+            FitTrack Pro
           </h1>
           <p className="text-slate-500">Отслеживайте, анализируйте и улучшайте свой путь к фитнесу</p>
         </header>
