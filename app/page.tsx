@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   Activity,
   Calendar,
@@ -16,21 +15,35 @@ import {
   PlusCircle,
   Search,
   Settings,
-  SortAsc,
   Target,
   Trash2,
   User,
+  Timer,
+  BarChart4,
+  Flame,
+  Dumbbell,
+  Clock,
+  LineChart,
+  ChevronRight,
+  Check,
+  X,
+  Filter,
+  Save,
+  Edit,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-import WorkoutChart from "./components/workout-chart"
-import CalorieChart from "./components/calorie-chart"
 import GoalTracker from "./components/goal-tracker"
 import { ThemeToggle } from "./components/theme-toggle"
 import ProfileEditor from "./components/profile-editor"
 import WeightTracker from "./components/weight-tracker"
+import WorkoutTimer from "./components/workout-timer"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Progress } from "@/components/ui/progress"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Dialog,
   DialogContent,
@@ -41,9 +54,15 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Switch } from "@/components/ui/switch"
-
-// Добавьте импорт новых компонентов в начале файла
-// import WeightTracker from "./components/weight-tracker" // Removed duplicate import
+import {
+  loadWorkouts,
+  saveWorkouts,
+  loadGoals,
+  saveGoals,
+  loadUserProfile,
+  saveUserProfile,
+  clearAllData,
+} from "./utils/db"
 
 export default function FitnessTracker() {
   // Основные состояния
@@ -68,6 +87,7 @@ export default function FitnessTracker() {
   const [showWeightDialog, setShowWeightDialog] = useState(false)
   const [newWeight, setNewWeight] = useState("")
   const [newWeightDate, setNewWeightDate] = useState(new Date().toISOString().split("T")[0])
+  const [isLoading, setIsLoading] = useState(true)
 
   // Состояния для фильтрации и сортировки
   const [filterType, setFilterType] = useState("all")
@@ -97,88 +117,119 @@ export default function FitnessTracker() {
     completed: false,
   })
 
-  // Загрузка данных из localStorage при монтировании компонента
+  // Загрузка данных из IndexedDB при монтировании компонента
   useEffect(() => {
-    const savedWorkouts = localStorage.getItem("workouts")
-    const savedGoals = localStorage.getItem("goals")
-    const savedProfile = localStorage.getItem("userProfile")
+    const loadData = async () => {
+      setIsLoading(true)
 
-    if (savedWorkouts) {
-      setWorkouts(JSON.parse(savedWorkouts))
-    } else {
-      // Демо данные, если нет сохраненных тренировок
-      setWorkouts([
-        {
-          id: 1,
-          date: "2024-05-10",
-          type: "Бег",
-          duration: 30,
-          calories: 320,
-          notes: "Утренняя пробежка в парке",
-          completed: true,
-        },
-        {
-          id: 2,
-          date: "2024-05-09",
-          type: "Силовая тренировка",
-          duration: 45,
-          calories: 280,
-          notes: "День верхней части тела",
-          completed: true,
-        },
-        {
-          id: 3,
-          date: "2024-05-08",
-          type: "Велосипед",
-          duration: 60,
-          calories: 450,
-          notes: "Холмистая местность",
-          completed: true,
-        },
-      ])
+      try {
+        // Загружаем тренировки
+        const savedWorkouts = await loadWorkouts()
+        if (savedWorkouts && savedWorkouts.length > 0) {
+          setWorkouts(savedWorkouts)
+        } else {
+          // Демо данные, если нет сохраненных тренировок
+          setWorkouts([
+            {
+              id: 1,
+              date: "2024-05-10",
+              type: "Бег",
+              duration: 30,
+              calories: 320,
+              notes: "Утренняя пробежка в парке",
+              completed: true,
+            },
+            {
+              id: 2,
+              date: "2024-05-09",
+              type: "Силовая тренировка",
+              duration: 45,
+              calories: 280,
+              notes: "День верхней части тела",
+              completed: true,
+            },
+            {
+              id: 3,
+              date: "2024-05-08",
+              type: "Велосипед",
+              duration: 60,
+              calories: 450,
+              notes: "Холмистая местность",
+              completed: true,
+            },
+          ])
+        }
+
+        // Загружаем цели
+        const savedGoals = await loadGoals()
+        if (savedGoals && savedGoals.length > 0) {
+          setGoals(savedGoals)
+        } else {
+          // Демо цели
+          setGoals([
+            {
+              id: 1,
+              title: "Сжечь 1000 калорий за неделю",
+              targetType: "calories",
+              targetValue: 1000,
+              deadline: "2024-05-20",
+              completed: false,
+            },
+            {
+              id: 2,
+              title: "Бегать 3 раза в неделю",
+              targetType: "frequency",
+              targetValue: 3,
+              deadline: "2024-05-25",
+              completed: false,
+            },
+          ])
+        }
+
+        // Загружаем профиль пользователя
+        const savedProfile = await loadUserProfile()
+        if (savedProfile) {
+          setUserProfile(savedProfile)
+        }
+      } catch (error) {
+        console.error("Error loading data:", error)
+        toast({
+          title: "Ошибка загрузки данных",
+          description: "Не удалось загрузить ваши данные. Используются значения по умолчанию.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsLoading(false)
+      }
     }
 
-    if (savedGoals) {
-      setGoals(JSON.parse(savedGoals))
-    } else {
-      // Демо цели
-      setGoals([
-        {
-          id: 1,
-          title: "Сжечь 1000 калорий за неделю",
-          targetType: "calories",
-          targetValue: 1000,
-          deadline: "2024-05-20",
-          completed: false,
-        },
-        {
-          id: 2,
-          title: "Бегать 3 раза в неделю",
-          targetType: "frequency",
-          targetValue: 3,
-          deadline: "2024-05-25",
-          completed: false,
-        },
-      ])
-    }
-
-    if (savedProfile) {
-      setUserProfile(JSON.parse(savedProfile))
-    }
+    loadData()
   }, [])
 
-  // Сохранение данных в localStorage при изменении
+  // Сохранение данных в IndexedDB при изменении
   useEffect(() => {
-    localStorage.setItem("workouts", JSON.stringify(workouts))
-  }, [workouts])
+    if (!isLoading) {
+      saveWorkouts(workouts).catch((error) => {
+        console.error("Error saving workouts:", error)
+      })
+    }
+  }, [workouts, isLoading])
 
   useEffect(() => {
-    localStorage.setItem("goals", JSON.stringify(goals))
-  }, [goals])
+    if (!isLoading) {
+      saveGoals(goals).catch((error) => {
+        console.error("Error saving goals:", error)
+      })
+    }
+  }, [goals, isLoading])
 
   useEffect(() => {
-    localStorage.setItem("userProfile", JSON.stringify(userProfile))
-  }, [userProfile])
+    if (!isLoading) {
+      saveUserProfile(userProfile).catch((error) => {
+        console.error("Error saving user profile:", error)
+      })
+    }
+  }, [userProfile, isLoading])
 
   // Обработчик добавления нового веса
   const handleAddWeight = () => {
@@ -269,6 +320,19 @@ export default function FitnessTracker() {
 
     // Проверка достижения целей
     checkGoalsProgress(updatedWorkouts)
+  }
+
+  // Обработчик для сохранения тренировки из таймера
+  const handleSaveTimerWorkout = (workout) => {
+    setWorkouts([workout, ...workouts])
+
+    toast({
+      title: "Тренировка сохранена",
+      description: `${workout.type} - ${workout.duration} мин`,
+    })
+
+    // Проверка достижения целей
+    checkGoalsProgress([...workouts, workout])
   }
 
   // Обработчики для целей
@@ -445,6 +509,37 @@ export default function FitnessTracker() {
     event.target.value = null
   }
 
+  // Функция для очистки всех данных
+  const handleClearAllData = async () => {
+    if (confirm("Вы уверены, что хотите удалить все данные? Это действие нельзя отменить.")) {
+      try {
+        await clearAllData()
+
+        setWorkouts([])
+        setGoals([])
+        setUserProfile({
+          weight: 70,
+          height: 175,
+          calorieTarget: 2500,
+          restingHeartRate: 65,
+        })
+
+        toast({
+          title: "Данные удалены",
+          description: "Все данные приложения были удалены",
+          variant: "destructive",
+        })
+      } catch (error) {
+        console.error("Error clearing data:", error)
+        toast({
+          title: "Ошибка",
+          description: "Не удалось удалить все данные",
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
   // Расчет статистики
   const totalCalories = workouts.reduce((sum, workout) => sum + workout.calories, 0)
   const totalWorkouts = workouts.length
@@ -469,522 +564,205 @@ export default function FitnessTracker() {
 
   const filteredWorkouts = getFilteredWorkouts()
 
+  // Форматирование даты
+  const formatDate = (dateString) => {
+    if (!dateString) return ""
+    const date = new Date(dateString)
+    return date.toLocaleDateString()
+  }
+
+  // Получение иконки для типа тренировки
+  const getWorkoutTypeIcon = (type) => {
+    switch (type) {
+      case "Бег":
+        return <Activity className="h-4 w-4" />
+      case "Силовая тренировка":
+        return <Dumbbell className="h-4 w-4" />
+      case "Велосипед":
+        return <Activity className="h-4 w-4" />
+      case "Плавание":
+        return <Activity className="h-4 w-4" />
+      case "Йога":
+        return <Activity className="h-4 w-4" />
+      default:
+        return <Activity className="h-4 w-4" />
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-lg">Загрузка данных...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold flex items-center gap-2 text-primary">
-            <Activity className="h-8 w-8" />
-            FitTrack Pro
-          </h1>
-          <p className="text-slate-500">Отслеживайте, анализируйте и улучшайте свой путь к фитнесу</p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-2 text-primary">
+                <Activity className="h-8 w-8" />
+                FitTrack Pro
+              </h1>
+              <p className="text-muted-foreground">Отслеживайте, анализируйте и улучшайте свой путь к фитнесу</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <Button variant="outline" size="icon" onClick={() => setActiveTab("settings")}>
+                <Settings className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
-          <div className="bg-card rounded-lg shadow-sm p-4 border">
-            <nav className="space-y-2">
-              <Button
-                variant={activeTab === "dashboard" ? "default" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setActiveTab("dashboard")}
-              >
-                <LayoutDashboard className="mr-2 h-4 w-4" />
-                Панель
-              </Button>
-              <Button
-                variant={activeTab === "add" ? "default" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setActiveTab("add")}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Добавить тренировку
-              </Button>
-              <Button
-                variant={activeTab === "history" ? "default" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setActiveTab("history")}
-              >
-                <Calendar className="mr-2 h-4 w-4" />
-                История тренировок
-              </Button>
-              <Button
-                variant={activeTab === "goals" ? "default" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setActiveTab("goals")}
-              >
-                <Target className="mr-2 h-4 w-4" />
-                Цели
-              </Button>
-              <Button
-                variant={activeTab === "profile" ? "default" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setActiveTab("profile")}
-              >
-                <User className="mr-2 h-4 w-4" />
-                Профиль
-              </Button>
-              <Button
-                variant={activeTab === "settings" ? "default" : "ghost"}
-                className="w-full justify-start"
-                onClick={() => setActiveTab("settings")}
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Настройки
-              </Button>
-              <ThemeToggle className="w-full justify-start" />
-            </nav>
-          </div>
-
-          {activeTab === "dashboard" && (
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Обзор</CardTitle>
-                  <CardDescription>Краткая статистика вашей активности</CardDescription>
-                </CardHeader>
-                <CardContent className="grid gap-4 grid-cols-1 md:grid-cols-3">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium">Сожжено калорий</span>
-                    <span className="text-2xl font-semibold">{totalCalories}</span>
-                    <span className="text-sm text-muted-foreground">Всего</span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium">Тренировок</span>
-                    <span className="text-2xl font-semibold">{totalWorkouts}</span>
-                    <span className="text-sm text-muted-foreground">Всего</span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium">Общая продолжительность</span>
-                    <span className="text-2xl font-semibold">{totalDuration} мин</span>
-                    <span className="text-sm text-muted-foreground">Всего</span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>График калорий</CardTitle>
-                    <CardDescription>Калории, сожженные за последние 7 дней</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <CalorieChart workouts={last7DaysWorkouts} />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>График тренировок</CardTitle>
-                    <CardDescription>Количество тренировок по типам</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <WorkoutChart workoutsByType={workoutsByType} />
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Отслеживание целей</CardTitle>
-                  <CardDescription>Ваши текущие цели и прогресс</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <GoalTracker
-                    goals={goals}
-                    workouts={workouts}
-                    handleToggleGoalCompletion={handleToggleGoalCompletion}
-                  />
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {activeTab === "add" && (
+        <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
+          {/* Боковая навигация */}
+          <div className="space-y-4">
             <Card>
-              <CardHeader>
-                <CardTitle>Добавить тренировку</CardTitle>
-                <CardDescription>Запишите свою новую тренировку</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="date">Дата</Label>
-                    <Input
-                      type="date"
-                      id="date"
-                      value={newWorkout.date}
-                      onChange={(e) => setNewWorkout({ ...newWorkout, date: e.target.value })}
-                    />
+              <CardContent className="p-4">
+                <nav className="space-y-1">
+                  <Button
+                    variant={activeTab === "dashboard" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setActiveTab("dashboard")}
+                  >
+                    <LayoutDashboard className="mr-2 h-4 w-4" />
+                    Панель
+                  </Button>
+                  <Button
+                    variant={activeTab === "add" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setActiveTab("add")}
+                  >
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Добавить тренировку
+                  </Button>
+                  <Button
+                    variant={activeTab === "timer" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setActiveTab("timer")}
+                  >
+                    <Timer className="mr-2 h-4 w-4" />
+                    Таймер тренировки
+                  </Button>
+                  <Button
+                    variant={activeTab === "history" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setActiveTab("history")}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    История тренировок
+                  </Button>
+                  <Button
+                    variant={activeTab === "goals" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setActiveTab("goals")}
+                  >
+                    <Target className="mr-2 h-4 w-4" />
+                    Цели
+                  </Button>
+                  <Button
+                    variant={activeTab === "profile" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setActiveTab("profile")}
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    Профиль
+                  </Button>
+                  <Button
+                    variant={activeTab === "settings" ? "default" : "ghost"}
+                    className="w-full justify-start"
+                    onClick={() => setActiveTab("settings")}
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Настройки
+                  </Button>
+                </nav>
+              </CardContent>
+            </Card>
+
+            {/* Статистика пользователя */}
+            <Card>
+              <CardContent className="p-4 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary/10 rounded-full p-2">
+                    <User className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <Label htmlFor="type">Тип тренировки</Label>
-                    <Select
-                      value={newWorkout.type}
-                      onValueChange={(value) => setNewWorkout({ ...newWorkout, type: value })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Выберите тип" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Бег">Бег</SelectItem>
-                        <SelectItem value="Силовая тренировка">Силовая тренировка</SelectItem>
-                        <SelectItem value="Велосипед">Велосипед</SelectItem>
-                        <SelectItem value="Плавание">Плавание</SelectItem>
-                        <SelectItem value="Йога">Йога</SelectItem>
-                        <SelectItem value="Другое">Другое</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <h3 className="font-medium">{userProfile.name || "Пользователь"}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {userProfile.gender === "male" ? "Мужчина" : userProfile.gender === "female" ? "Женщина" : ""}
+                      {userProfile.age ? `, ${userProfile.age} лет` : ""}
+                    </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="duration">Продолжительность (мин)</Label>
-                    <Input
-                      type="number"
-                      id="duration"
-                      value={newWorkout.duration}
-                      onChange={(e) => setNewWorkout({ ...newWorkout, duration: Number.parseInt(e.target.value) })}
-                    />
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Flame className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Калории</span>
+                    </div>
+                    <span className="font-medium">{totalCalories}</span>
                   </div>
-                  <div>
-                    <Label htmlFor="calories">Сожжено калорий</Label>
-                    <Input
-                      type="number"
-                      id="calories"
-                      value={newWorkout.calories}
-                      onChange={(e) => setNewWorkout({ ...newWorkout, calories: Number.parseInt(e.target.value) })}
-                    />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Dumbbell className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Тренировки</span>
+                    </div>
+                    <span className="font-medium">{totalWorkouts}</span>
                   </div>
-                </div>
-                <div>
-                  <Label htmlFor="notes">Заметки</Label>
-                  <Input
-                    type="text"
-                    id="notes"
-                    value={newWorkout.notes}
-                    onChange={(e) => setNewWorkout({ ...newWorkout, notes: e.target.value })}
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="completed"
-                    checked={newWorkout.completed}
-                    onCheckedChange={(checked) => setNewWorkout({ ...newWorkout, completed: checked })}
-                  />
-                  <Label htmlFor="completed">Выполнено</Label>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm">Время</span>
+                    </div>
+                    <span className="font-medium">{totalDuration} мин</span>
+                  </div>
                 </div>
               </CardContent>
-              <CardFooter>
-                <Button onClick={handleAddWorkout}>Добавить тренировку</Button>
-              </CardFooter>
             </Card>
-          )}
 
-          {activeTab === "edit" && editWorkout && (
+            {/* Быстрые действия */}
             <Card>
-              <CardHeader>
-                <CardTitle>Редактировать тренировку</CardTitle>
-                <CardDescription>Измените детали тренировки</CardDescription>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Быстрые действия</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="date">Дата</Label>
-                    <Input
-                      type="date"
-                      id="date"
-                      value={editWorkout.date}
-                      onChange={(e) => setEditWorkout({ ...editWorkout, date: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="type">Тип тренировки</Label>
-                    <Select
-                      value={editWorkout.type}
-                      onValueChange={(value) => setEditWorkout({ ...editWorkout, type: value })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Выберите тип" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Бег">Бег</SelectItem>
-                        <SelectItem value="Силовая тренировка">Силовая тренировка</SelectItem>
-                        <SelectItem value="Велосипед">Велосипед</SelectItem>
-                        <SelectItem value="Плавание">Плавание</SelectItem>
-                        <SelectItem value="Йога">Йога</SelectItem>
-                        <SelectItem value="Другое">Другое</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="duration">Продолжительность (мин)</Label>
-                    <Input
-                      type="number"
-                      id="duration"
-                      value={editWorkout.duration}
-                      onChange={(e) => setEditWorkout({ ...editWorkout, duration: Number.parseInt(e.target.value) })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="calories">Сожжено калорий</Label>
-                    <Input
-                      type="number"
-                      id="calories"
-                      value={editWorkout.calories}
-                      onChange={(e) => setEditWorkout({ ...editWorkout, calories: Number.parseInt(e.target.value) })}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="notes">Заметки</Label>
-                  <Input
-                    type="text"
-                    id="notes"
-                    value={editWorkout.notes}
-                    onChange={(e) => setEditWorkout({ ...editWorkout, notes: e.target.value })}
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="completed"
-                    checked={editWorkout.completed}
-                    onCheckedChange={(checked) => setEditWorkout({ ...editWorkout, completed: checked })}
-                  />
-                  <Label htmlFor="completed">Выполнено</Label>
-                </div>
-              </CardContent>
-              <CardFooter>
-                <Button onClick={handleUpdateWorkout}>Обновить тренировку</Button>
-              </CardFooter>
-            </Card>
-          )}
-
-          {activeTab === "history" && (
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>История тренировок</CardTitle>
-                  <CardDescription>Ваши прошлые тренировки</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="filter">Фильтр:</Label>
-                      <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Все типы" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Все типы</SelectItem>
-                          <SelectItem value="Бег">Бег</SelectItem>
-                          <SelectItem value="Силовая тренировка">Силовая тренировка</SelectItem>
-                          <SelectItem value="Велосипед">Велосипед</SelectItem>
-                          <SelectItem value="Плавание">Плавание</SelectItem>
-                          <SelectItem value="Йога">Йога</SelectItem>
-                          <SelectItem value="Другое">Другое</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor="search">Поиск:</Label>
-                      <Input
-                        type="search"
-                        id="search"
-                        placeholder="Поиск тренировок..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                      <Search className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[100px]">
-                          Дата
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSortField("date")
-                              setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-                            }}
-                          >
-                            <SortAsc className="h-4 w-4 mr-2" />
-                          </Button>
-                        </TableHead>
-                        <TableHead>Тип</TableHead>
-                        <TableHead>
-                          Продолжительность
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSortField("duration")
-                              setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-                            }}
-                          >
-                            <SortAsc className="h-4 w-4 mr-2" />
-                          </Button>
-                        </TableHead>
-                        <TableHead>
-                          Калории
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSortField("calories")
-                              setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-                            }}
-                          >
-                            <SortAsc className="h-4 w-4 mr-2" />
-                          </Button>
-                        </TableHead>
-                        <TableHead>Заметки</TableHead>
-                        <TableHead className="text-right">Действия</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredWorkouts.map((workout) => (
-                        <TableRow key={workout.id}>
-                          <TableCell className="font-medium">{workout.date}</TableCell>
-                          <TableCell>{workout.type}</TableCell>
-                          <TableCell>{workout.duration} мин</TableCell>
-                          <TableCell>{workout.calories}</TableCell>
-                          <TableCell>{workout.notes}</TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => handleEditWorkout(workout)}>
-                              <Settings className="h-4 w-4 mr-2" />
-                              Редактировать
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => handleDeleteWorkout(workout.id)}>
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Удалить
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {activeTab === "goals" && (
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Управление целями</CardTitle>
-                  <CardDescription>Установите и отслеживайте свои фитнес-цели</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <Label htmlFor="title">Название цели</Label>
-                        <Input
-                          type="text"
-                          id="title"
-                          value={newGoal.title}
-                          onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="targetType">Тип цели</Label>
-                        <Select
-                          value={newGoal.targetType}
-                          onValueChange={(value) => setNewGoal({ ...newGoal, targetType: value })}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Выберите тип" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="calories">Калории</SelectItem>
-                            <SelectItem value="frequency">Частота</SelectItem>
-                            <SelectItem value="duration">Продолжительность</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="targetValue">Целевое значение</Label>
-                        <Input
-                          type="number"
-                          id="targetValue"
-                          value={newGoal.targetValue}
-                          onChange={(e) => setNewGoal({ ...newGoal, targetValue: Number.parseInt(e.target.value) })}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="deadline">Срок выполнения</Label>
-                        <Input
-                          type="date"
-                          id="deadline"
-                          value={newGoal.deadline}
-                          onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <Button onClick={handleAddGoal}>Добавить цель</Button>
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Название</TableHead>
-                        <TableHead>Тип</TableHead>
-                        <TableHead>Целевое значение</TableHead>
-                        <TableHead>Срок выполнения</TableHead>
-                        <TableHead className="text-right">Действия</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {goals.map((goal) => (
-                        <TableRow key={goal.id}>
-                          <TableCell>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`goal-${goal.id}`}
-                                checked={goal.completed}
-                                onCheckedChange={() => handleToggleGoalCompletion(goal.id)}
-                              />
-                              <Label htmlFor={`goal-${goal.id}`} className="cursor-pointer">
-                                {goal.title}
-                              </Label>
-                            </div>
-                          </TableCell>
-                          <TableCell>{goal.targetType}</TableCell>
-                          <TableCell>{goal.targetValue}</TableCell>
-                          <TableCell>{goal.deadline}</TableCell>
-                          <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => handleDeleteGoal(goal.id)}>
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Удалить
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {activeTab === "profile" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Редактировать профиль</CardTitle>
-                <CardDescription>Измените свои личные данные</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ProfileEditor userProfile={userProfile} setUserProfile={setUserProfile} />
+              <CardContent className="p-4 space-y-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => setActiveTab("add")}
+                >
+                  <PlusCircle className="mr-2 h-3.5 w-3.5" />
+                  Новая тренировка
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => setActiveTab("timer")}
+                >
+                  <Timer className="mr-2 h-3.5 w-3.5" />
+                  Запустить таймер
+                </Button>
                 <Dialog>
                   <DialogTrigger asChild>
-                    <Button variant="outline">Добавить вес</Button>
+                    <Button variant="outline" size="sm" className="w-full justify-start">
+                      <LineChart className="mr-2 h-3.5 w-3.5" />
+                      Добавить вес
+                    </Button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
@@ -1025,128 +803,711 @@ export default function FitnessTracker() {
                 </Dialog>
               </CardContent>
             </Card>
-          )}
+          </div>
 
-          {activeTab === "settings" && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-bold mb-4">Настройки</h2>
-
-              <Tabs defaultValue="app">
-                <TabsList>
-                  <TabsTrigger value="weight">Вес</TabsTrigger>
-                  <TabsTrigger value="app">Приложение</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="weight" className="mt-4">
-                  <WeightTracker userProfile={userProfile} setUserProfile={setUserProfile} />
-                </TabsContent>
-
-                <TabsContent value="app" className="mt-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Настройки приложения</CardTitle>
-                      <CardDescription>Настройте ваш опыт использования приложения</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                          <Label>Темный режим</Label>
-                          <p className="text-sm text-muted-foreground">Переключение между светлой и темной темой</p>
+          {/* Основной контент */}
+          <div>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                {activeTab === "dashboard" && (
+                  <div className="space-y-6">
+                    {/* Обзор статистики */}
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center gap-2">
+                          <BarChart4 className="h-5 w-5 text-primary" />
+                          <CardTitle>Обзор активности</CardTitle>
                         </div>
-                        <div>
-                          <ThemeToggle />
+                        <CardDescription>Краткая статистика вашей активности</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid gap-6 grid-cols-1 md:grid-cols-3">
+                          <div className="bg-primary/5 rounded-lg p-4 flex flex-col">
+                            <span className="text-sm text-muted-foreground mb-1">Сожжено калорий</span>
+                            <span className="text-3xl font-semibold">{totalCalories}</span>
+                            <span className="text-xs text-muted-foreground mt-1">
+                              В среднем {averageCaloriesPerWorkout} кал/тренировка
+                            </span>
+                          </div>
+                          <div className="bg-primary/5 rounded-lg p-4 flex flex-col">
+                            <span className="text-sm text-muted-foreground mb-1">Тренировок</span>
+                            <span className="text-3xl font-semibold">{totalWorkouts}</span>
+                            <span className="text-xs text-muted-foreground mt-1">
+                              {last7DaysWorkouts.length} за последние 7 дней
+                            </span>
+                          </div>
+                          <div className="bg-primary/5 rounded-lg p-4 flex flex-col">
+                            <span className="text-sm text-muted-foreground mb-1">Общая продолжительность</span>
+                            <span className="text-3xl font-semibold">{totalDuration} мин</span>
+                            <span className="text-xs text-muted-foreground mt-1">
+                              В среднем {totalWorkouts > 0 ? Math.round(totalDuration / totalWorkouts) : 0}{" "}
+                              мин/тренировка
+                            </span>
+                          </div>
                         </div>
-                      </div>
+                      </CardContent>
+                    </Card>
 
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                          <Label>Уведомления</Label>
-                          <p className="text-sm text-muted-foreground">Включить напоминания о тренировках</p>
+                    {/* Цели */}
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center gap-2">
+                          <Target className="h-5 w-5 text-primary" />
+                          <CardTitle>Отслеживание целей</CardTitle>
                         </div>
-                        <div>
-                          <Switch defaultChecked />
+                        <CardDescription>Ваши текущие цели и прогресс</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="bg-primary/5 rounded-lg p-4">
+                          <GoalTracker
+                            goals={goals}
+                            workouts={workouts}
+                            handleToggleGoalCompletion={handleToggleGoalCompletion}
+                          />
                         </div>
-                      </div>
+                      </CardContent>
+                    </Card>
 
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5">
-                          <Label>Единицы измерения</Label>
-                          <p className="text-sm text-muted-foreground">Выберите предпочтительные единицы измерения</p>
-                        </div>
-                        <Select
-                          value={userProfile.units || "metric"}
-                          onValueChange={(value) => setUserProfile({ ...userProfile, units: value })}
-                        >
-                          <SelectTrigger className="w-[130px]">
-                            <SelectValue placeholder="Выберите единицы" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="metric">Метрические (кг)</SelectItem>
-                            <SelectItem value="imperial">Имперские (фунты)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="pt-4 border-t">
-                        <h3 className="text-sm font-medium mb-2">Управление данными</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          <Button variant="outline" className="w-full justify-start" onClick={handleExportData}>
-                            <Download className="mr-2 h-4 w-4" />
-                            Экспорт данных
-                          </Button>
-                          <div className="relative">
-                            <Button
-                              variant="outline"
-                              className="w-full justify-start"
-                              onClick={() => document.getElementById("import-file-settings").click()}
-                            >
-                              <FileUp className="mr-2 h-4 w-4" />
-                              Импорт данных
-                            </Button>
-                            <input
-                              id="import-file-settings"
-                              type="file"
-                              accept=".json"
-                              className="hidden"
-                              onChange={handleImportData}
-                            />
+                    {/* Последние тренировки */}
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-5 w-5 text-primary" />
+                            <CardTitle>Последние тренировки</CardTitle>
                           </div>
                           <Button
-                            variant="destructive"
-                            className="w-full justify-start mt-2 md:col-span-2"
-                            onClick={() => {
-                              if (confirm("Вы уверены, что хотите удалить все данные? Это действие нельзя отменить.")) {
-                                localStorage.clear()
-                                setWorkouts([])
-                                setGoals([])
-                                setUserProfile({
-                                  weight: 70,
-                                  height: 175,
-                                  calorieTarget: 2500,
-                                  restingHeartRate: 65,
-                                })
-                                toast({
-                                  title: "Данные удалены",
-                                  description: "Все данные приложения были удалены",
-                                  variant: "destructive",
-                                })
-                              }
-                            }}
+                            variant="ghost"
+                            size="sm"
+                            className="text-primary"
+                            onClick={() => setActiveTab("history")}
                           >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Удалить все данные
+                            Показать все
+                            <ChevronRight className="ml-1 h-4 w-4" />
                           </Button>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {workouts.slice(0, 3).map((workout) => (
+                            <div
+                              key={workout.id}
+                              className="bg-primary/5 rounded-lg p-3 flex items-center justify-between"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="bg-background rounded-full p-2">{getWorkoutTypeIcon(workout.type)}</div>
+                                <div>
+                                  <h4 className="font-medium">{workout.type}</h4>
+                                  <p className="text-xs text-muted-foreground">{formatDate(workout.date)}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <div className="text-right">
+                                  <p className="text-sm font-medium">{workout.duration} мин</p>
+                                  <p className="text-xs text-muted-foreground">{workout.calories} кал</p>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => handleEditWorkout(workout)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          {workouts.length === 0 && (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                              <p>У вас пока нет тренировок</p>
+                              <p className="text-sm">Добавьте свою первую тренировку, чтобы начать отслеживание</p>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {activeTab === "add" && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <PlusCircle className="h-5 w-5 text-primary" />
+                        <CardTitle>Добавить тренировку</CardTitle>
+                      </div>
+                      <CardDescription>Запишите свою новую тренировку</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="bg-primary/5 rounded-lg p-6 space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label htmlFor="date">Дата</Label>
+                            <Input
+                              type="date"
+                              id="date"
+                              value={newWorkout.date}
+                              onChange={(e) => setNewWorkout({ ...newWorkout, date: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="type">Тип тренировки</Label>
+                            <Select
+                              value={newWorkout.type}
+                              onValueChange={(value) => setNewWorkout({ ...newWorkout, type: value })}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Выберите тип" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Бег">Бег</SelectItem>
+                                <SelectItem value="Силовая тренировка">Силовая тренировка</SelectItem>
+                                <SelectItem value="Велосипед">Велосипед</SelectItem>
+                                <SelectItem value="Плавание">Плавание</SelectItem>
+                                <SelectItem value="Йога">Йога</SelectItem>
+                                <SelectItem value="Другое">Другое</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label htmlFor="duration">Продолжительность (мин)</Label>
+                            <Input
+                              type="number"
+                              id="duration"
+                              value={newWorkout.duration}
+                              onChange={(e) =>
+                                setNewWorkout({ ...newWorkout, duration: Number.parseInt(e.target.value) })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="calories">Сожжено калорий</Label>
+                            <Input
+                              type="number"
+                              id="calories"
+                              value={newWorkout.calories}
+                              onChange={(e) =>
+                                setNewWorkout({ ...newWorkout, calories: Number.parseInt(e.target.value) })
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="notes">Заметки</Label>
+                          <Input
+                            type="text"
+                            id="notes"
+                            value={newWorkout.notes}
+                            onChange={(e) => setNewWorkout({ ...newWorkout, notes: e.target.value })}
+                            placeholder="Добавьте заметки о тренировке"
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="completed"
+                            checked={newWorkout.completed}
+                            onCheckedChange={(checked) => setNewWorkout({ ...newWorkout, completed: checked })}
+                          />
+                          <Label htmlFor="completed">Выполнено</Label>
                         </div>
                       </div>
                     </CardContent>
+                    <CardFooter>
+                      <Button onClick={handleAddWorkout} className="w-full md:w-auto">
+                        <Save className="mr-2 h-4 w-4" />
+                        Добавить тренировку
+                      </Button>
+                    </CardFooter>
                   </Card>
-                </TabsContent>
-              </Tabs>
-            </div>
-          )}
+                )}
+
+                {activeTab === "timer" && <WorkoutTimer onSaveWorkout={handleSaveTimerWorkout} />}
+
+                {activeTab === "edit" && editWorkout && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <Edit className="h-5 w-5 text-primary" />
+                        <CardTitle>Редактировать тренировку</CardTitle>
+                      </div>
+                      <CardDescription>Измените детали тренировки</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="bg-primary/5 rounded-lg p-6 space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label htmlFor="date">Дата</Label>
+                            <Input
+                              type="date"
+                              id="date"
+                              value={editWorkout.date}
+                              onChange={(e) => setEditWorkout({ ...editWorkout, date: e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="type">Тип тренировки</Label>
+                            <Select
+                              value={editWorkout.type}
+                              onValueChange={(value) => setEditWorkout({ ...editWorkout, type: value })}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Выберите тип" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Бег">Бег</SelectItem>
+                                <SelectItem value="Силовая тренировка">Силовая тренировка</SelectItem>
+                                <SelectItem value="Велосипед">Велосипед</SelectItem>
+                                <SelectItem value="Плавание">Плавание</SelectItem>
+                                <SelectItem value="Йога">Йога</SelectItem>
+                                <SelectItem value="Другое">Другое</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label htmlFor="duration">Продолжительность (мин)</Label>
+                            <Input
+                              type="number"
+                              id="duration"
+                              value={editWorkout.duration}
+                              onChange={(e) =>
+                                setEditWorkout({ ...editWorkout, duration: Number.parseInt(e.target.value) })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="calories">Сожжено калорий</Label>
+                            <Input
+                              type="number"
+                              id="calories"
+                              value={editWorkout.calories}
+                              onChange={(e) =>
+                                setEditWorkout({ ...editWorkout, calories: Number.parseInt(e.target.value) })
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="notes">Заметки</Label>
+                          <Input
+                            type="text"
+                            id="notes"
+                            value={editWorkout.notes}
+                            onChange={(e) => setEditWorkout({ ...editWorkout, notes: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="completed"
+                            checked={editWorkout.completed}
+                            onCheckedChange={(checked) => setEditWorkout({ ...editWorkout, completed: checked })}
+                          />
+                          <Label htmlFor="completed">Выполнено</Label>
+                        </div>
+                      </div>
+                    </CardContent>
+                    <CardFooter className="flex justify-between">
+                      <Button variant="outline" onClick={() => setActiveTab("history")}>
+                        <X className="mr-2 h-4 w-4" />
+                        Отмена
+                      </Button>
+                      <Button onClick={handleUpdateWorkout}>
+                        <Check className="mr-2 h-4 w-4" />
+                        Сохранить изменения
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                )}
+
+                {activeTab === "history" && (
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-5 w-5 text-primary" />
+                          <CardTitle>История тренировок</CardTitle>
+                        </div>
+                        <CardDescription>Ваши прошлые тренировки</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        <div className="bg-primary/5 rounded-lg p-4">
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                            <div className="flex items-center gap-2">
+                              <Filter className="h-4 w-4 text-muted-foreground" />
+                              <Label htmlFor="filter" className="text-sm">
+                                Фильтр:
+                              </Label>
+                              <Select value={filterType} onValueChange={setFilterType}>
+                                <SelectTrigger className="w-[180px]">
+                                  <SelectValue placeholder="Все типы" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="all">Все типы</SelectItem>
+                                  <SelectItem value="Бег">Бег</SelectItem>
+                                  <SelectItem value="Силовая тренировка">Силовая тренировка</SelectItem>
+                                  <SelectItem value="Велосипед">Велосипед</SelectItem>
+                                  <SelectItem value="Плавание">Плавание</SelectItem>
+                                  <SelectItem value="Йога">Йога</SelectItem>
+                                  <SelectItem value="Другое">Другое</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Search className="h-4 w-4 text-muted-foreground" />
+                              <Input
+                                type="search"
+                                id="search"
+                                placeholder="Поиск тренировок..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full md:w-[250px]"
+                              />
+                            </div>
+                          </div>
+
+                          {filteredWorkouts.length > 0 ? (
+                            <div className="space-y-3">
+                              {filteredWorkouts.map((workout) => (
+                                <div
+                                  key={workout.id}
+                                  className="bg-background rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="bg-primary/10 rounded-full p-2">
+                                      {getWorkoutTypeIcon(workout.type)}
+                                    </div>
+                                    <div>
+                                      <h4 className="font-medium">{workout.type}</h4>
+                                      <p className="text-xs text-muted-foreground">{formatDate(workout.date)}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                      <Clock className="h-4 w-4 text-muted-foreground" />
+                                      <span className="text-sm">{workout.duration} мин</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Flame className="h-4 w-4 text-muted-foreground" />
+                                      <span className="text-sm">{workout.calories} кал</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 w-8 p-0"
+                                        onClick={() => handleEditWorkout(workout)}
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 w-8 p-0 text-destructive"
+                                        onClick={() => handleDeleteWorkout(workout.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                              <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                              <p>Тренировки не найдены</p>
+                              <p className="text-sm">
+                                Попробуйте изменить параметры поиска или добавьте новую тренировку
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {activeTab === "goals" && (
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center gap-2">
+                          <Target className="h-5 w-5 text-primary" />
+                          <CardTitle>Управление целями</CardTitle>
+                        </div>
+                        <CardDescription>Установите и отслеживайте свои фитнес-цели</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        <div className="bg-primary/5 rounded-lg p-6 space-y-6">
+                          <h3 className="text-lg font-medium">Добавить новую цель</h3>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="title">Название цели</Label>
+                              <Input
+                                type="text"
+                                id="title"
+                                value={newGoal.title}
+                                onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
+                                placeholder="Например: Пробежать 30 км за неделю"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="targetType">Тип цели</Label>
+                              <Select
+                                value={newGoal.targetType}
+                                onValueChange={(value) => setNewGoal({ ...newGoal, targetType: value })}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="Выберите тип" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="calories">Калории</SelectItem>
+                                  <SelectItem value="frequency">Частота</SelectItem>
+                                  <SelectItem value="duration">Продолжительность</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="targetValue">Целевое значение</Label>
+                              <Input
+                                type="number"
+                                id="targetValue"
+                                value={newGoal.targetValue}
+                                onChange={(e) =>
+                                  setNewGoal({ ...newGoal, targetValue: Number.parseInt(e.target.value) })
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="deadline">Срок выполнения</Label>
+                            <Input
+                              type="date"
+                              id="deadline"
+                              value={newGoal.deadline}
+                              onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
+                            />
+                          </div>
+
+                          <Button onClick={handleAddGoal}>
+                            <PlusCircle className="mr-2 h-4 w-4" />
+                            Добавить цель
+                          </Button>
+                        </div>
+
+                        <Separator />
+
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-medium">Текущие цели</h3>
+                          {goals.length > 0 ? (
+                            <div className="space-y-4">
+                              {goals.map((goal) => (
+                                <div key={goal.id} className="bg-primary/5 rounded-lg p-4">
+                                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                      <div className="bg-background rounded-full p-2">
+                                        <Target className="h-4 w-4" />
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <h4 className="font-medium">{goal.title}</h4>
+                                          {goal.completed ? (
+                                            <Badge variant="success" className="text-xs">
+                                              Выполнено
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="outline" className="text-xs">
+                                              В процессе
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                          Срок: {formatDate(goal.deadline)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                      <div>
+                                        <div className="text-sm mb-1">
+                                          {goal.targetType === "calories" && `${goal.targetValue} калорий`}
+                                          {goal.targetType === "frequency" && `${goal.targetValue} тренировок`}
+                                          {goal.targetType === "duration" && `${goal.targetValue} минут`}
+                                        </div>
+                                        <Progress value={goal.completed ? 100 : 50} className="h-2 w-[150px]" />
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 w-8 p-0"
+                                          onClick={() => handleToggleGoalCompletion(goal.id)}
+                                        >
+                                          <Check className="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-8 w-8 p-0 text-destructive"
+                                          onClick={() => handleDeleteGoal(goal.id)}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8 text-muted-foreground bg-primary/5 rounded-lg">
+                              <Target className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                              <p>У вас пока нет целей</p>
+                              <p className="text-sm">Добавьте цель, чтобы отслеживать свой прогресс</p>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+
+                {activeTab === "profile" && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <User className="h-5 w-5 text-primary" />
+                        <CardTitle>Профиль пользователя</CardTitle>
+                      </div>
+                      <CardDescription>Управляйте своими персональными данными</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ProfileEditor userProfile={userProfile} setUserProfile={setUserProfile} />
+                    </CardContent>
+                  </Card>
+                )}
+
+                {activeTab === "settings" && (
+                  <div className="space-y-6">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center gap-2">
+                          <Settings className="h-5 w-5 text-primary" />
+                          <CardTitle>Настройки</CardTitle>
+                        </div>
+                        <CardDescription>Настройте ваш опыт использования приложения</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Tabs defaultValue="app">
+                          <TabsList className="grid grid-cols-2 mb-6">
+                            <TabsTrigger value="app">Приложение</TabsTrigger>
+                            <TabsTrigger value="weight">Вес</TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="app" className="space-y-6">
+                            <div className="bg-primary/5 rounded-lg p-6 space-y-6">
+                              <h3 className="text-lg font-medium">Основные настройки</h3>
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="space-y-0.5">
+                                    <Label>Темный режим</Label>
+                                    <p className="text-sm text-muted-foreground">
+                                      Переключение между светлой и темной темой
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <ThemeToggle />
+                                  </div>
+                                </div>
+
+                                <Separator />
+
+                                <div className="flex items-center justify-between">
+                                  <div className="space-y-0.5">
+                                    <Label>Уведомления</Label>
+                                    <p className="text-sm text-muted-foreground">Включить напоминания о тренировках</p>
+                                  </div>
+                                  <div>
+                                    <Switch defaultChecked />
+                                  </div>
+                                </div>
+
+                                <div className="pt-4 border-t">
+                                  <h3 className="text-sm font-medium mb-2">Управление данными</h3>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <Button
+                                      variant="outline"
+                                      className="w-full justify-start"
+                                      onClick={handleExportData}
+                                    >
+                                      <Download className="mr-2 h-4 w-4" />
+                                      Экспорт данных
+                                    </Button>
+                                    <div className="relative">
+                                      <Button
+                                        variant="outline"
+                                        className="w-full justify-start"
+                                        onClick={() => document.getElementById("import-file-settings").click()}
+                                      >
+                                        <FileUp className="mr-2 h-4 w-4" />
+                                        Импорт данных
+                                      </Button>
+                                      <input
+                                        id="import-file-settings"
+                                        type="file"
+                                        accept=".json"
+                                        className="hidden"
+                                        onChange={handleImportData}
+                                      />
+                                    </div>
+                                    <Button
+                                      variant="destructive"
+                                      className="w-full justify-start mt-2 md:col-span-2"
+                                      onClick={handleClearAllData}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Удалить все данные
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </TabsContent>
+
+                          <TabsContent value="weight">
+                            <WeightTracker userProfile={userProfile} setUserProfile={setUserProfile} />
+                          </TabsContent>
+                        </Tabs>
+                      </CardContent>
+                    </Card>
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
-        <Toaster />
       </div>
+      <Toaster />
     </div>
   )
 }
