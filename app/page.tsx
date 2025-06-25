@@ -9,14 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Activity,
   Calendar,
-  Download,
-  FileUp,
   LayoutDashboard,
   PlusCircle,
-  Search,
   Settings,
   Target,
-  Trash2,
   User,
   Timer,
   BarChart4,
@@ -30,19 +26,16 @@ import {
   Filter,
   Save,
   Edit,
+  Trash2,
 } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "@/components/ui/use-toast"
-import { Toaster } from "@/components/ui/toaster"
 import GoalTracker from "./components/goal-tracker"
 import { ThemeToggle } from "./components/theme-toggle"
-import ProfileEditor from "./components/profile-editor"
-import WeightTracker from "./components/weight-tracker"
 import WorkoutTimer from "./components/workout-timer"
-import { Badge } from "@/components/ui/badge"
+import WeightTracker from "./components/weight-tracker"
+import ProfileEditor from "./components/profile-editor"
 import { Separator } from "@/components/ui/separator"
-import { Progress } from "@/components/ui/progress"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Dialog,
@@ -53,7 +46,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Switch } from "@/components/ui/switch"
 import {
   loadWorkouts,
   saveWorkouts,
@@ -62,7 +54,10 @@ import {
   loadUserProfile,
   saveUserProfile,
   clearAllData,
+  loadProfiles,
+  saveProfiles,
 } from "./utils/db"
+import ProfileSwitcher from "./components/profile-switcher"
 
 export default function FitnessTracker() {
   // Основные состояния
@@ -88,6 +83,8 @@ export default function FitnessTracker() {
   const [newWeight, setNewWeight] = useState("")
   const [newWeightDate, setNewWeightDate] = useState(new Date().toISOString().split("T")[0])
   const [isLoading, setIsLoading] = useState(true)
+  const [profiles, setProfiles] = useState([])
+  const [currentProfileId, setCurrentProfileId] = useState(1)
 
   // Состояния для фильтрации и сортировки
   const [filterType, setFilterType] = useState("all")
@@ -123,8 +120,25 @@ export default function FitnessTracker() {
       setIsLoading(true)
 
       try {
-        // Загружаем тренировки
-        const savedWorkouts = await loadWorkouts()
+        // Загружаем профили
+        const savedProfiles = await loadProfiles()
+        if (savedProfiles && savedProfiles.length > 0) {
+          setProfiles(savedProfiles)
+          setCurrentProfileId(savedProfiles[0].id)
+        } else {
+          // Создаем дефолтный профиль, если нет сохраненных
+          const defaultProfile = {
+            id: 1,
+            name: "Основной профиль",
+            createdAt: new Date().toISOString(),
+          }
+          setProfiles([defaultProfile])
+          setCurrentProfileId(1)
+          await saveProfiles([defaultProfile])
+        }
+
+        // Загружаем тренировки для текущего профиля
+        const savedWorkouts = await loadWorkouts(currentProfileId)
         if (savedWorkouts && savedWorkouts.length > 0) {
           setWorkouts(savedWorkouts)
         } else {
@@ -132,6 +146,7 @@ export default function FitnessTracker() {
           setWorkouts([
             {
               id: 1,
+              profileId: currentProfileId,
               date: "2024-05-10",
               type: "Бег",
               duration: 30,
@@ -141,6 +156,7 @@ export default function FitnessTracker() {
             },
             {
               id: 2,
+              profileId: currentProfileId,
               date: "2024-05-09",
               type: "Силовая тренировка",
               duration: 45,
@@ -150,6 +166,7 @@ export default function FitnessTracker() {
             },
             {
               id: 3,
+              profileId: currentProfileId,
               date: "2024-05-08",
               type: "Велосипед",
               duration: 60,
@@ -160,8 +177,8 @@ export default function FitnessTracker() {
           ])
         }
 
-        // Загружаем цели
-        const savedGoals = await loadGoals()
+        // Загружаем цели для текущего профиля
+        const savedGoals = await loadGoals(currentProfileId)
         if (savedGoals && savedGoals.length > 0) {
           setGoals(savedGoals)
         } else {
@@ -169,6 +186,7 @@ export default function FitnessTracker() {
           setGoals([
             {
               id: 1,
+              profileId: currentProfileId,
               title: "Сжечь 1000 калорий за неделю",
               targetType: "calories",
               targetValue: 1000,
@@ -177,6 +195,7 @@ export default function FitnessTracker() {
             },
             {
               id: 2,
+              profileId: currentProfileId,
               title: "Бегать 3 раза в неделю",
               targetType: "frequency",
               targetValue: 3,
@@ -187,9 +206,27 @@ export default function FitnessTracker() {
         }
 
         // Загружаем профиль пользователя
-        const savedProfile = await loadUserProfile()
+        const savedProfile = await loadUserProfile(currentProfileId)
         if (savedProfile) {
           setUserProfile(savedProfile)
+        } else {
+          // Устанавливаем дефолтный профиль
+          setUserProfile({
+            id: currentProfileId,
+            name: "",
+            weight: 70,
+            height: 175,
+            calorieTarget: 2500,
+            restingHeartRate: 65,
+            gender: "",
+            age: "",
+            activityLevel: "moderate",
+            units: "metric",
+            language: "ru",
+            privacy: "private",
+            weightHistory: [],
+            measurements: {},
+          })
         }
       } catch (error) {
         console.error("Error loading data:", error)
@@ -204,32 +241,32 @@ export default function FitnessTracker() {
     }
 
     loadData()
-  }, [])
+  }, [currentProfileId])
 
   // Сохранение данных в IndexedDB при изменении
   useEffect(() => {
     if (!isLoading) {
-      saveWorkouts(workouts).catch((error) => {
+      saveWorkouts(workouts, currentProfileId).catch((error) => {
         console.error("Error saving workouts:", error)
       })
     }
-  }, [workouts, isLoading])
+  }, [workouts, isLoading, currentProfileId])
 
   useEffect(() => {
     if (!isLoading) {
-      saveGoals(goals).catch((error) => {
+      saveGoals(goals, currentProfileId).catch((error) => {
         console.error("Error saving goals:", error)
       })
     }
-  }, [goals, isLoading])
+  }, [goals, isLoading, currentProfileId])
 
   useEffect(() => {
-    if (!isLoading) {
-      saveUserProfile(userProfile).catch((error) => {
+    if (!isLoading && userProfile) {
+      saveUserProfile({ ...userProfile, id: currentProfileId }).catch((error) => {
         console.error("Error saving user profile:", error)
       })
     }
-  }, [userProfile, isLoading])
+  }, [userProfile, isLoading, currentProfileId])
 
   // Обработчик добавления нового веса
   const handleAddWeight = () => {
@@ -454,12 +491,61 @@ export default function FitnessTracker() {
       })
   }
 
+  // Функции для управления профилями
+  const handleSwitchProfile = (profileId) => {
+    setCurrentProfileId(profileId)
+    toast({
+      title: "Профиль изменен",
+      description: `Профиль успешно изменен`,
+    })
+  }
+
+  const handleCreateProfile = async (name) => {
+    const newProfile = {
+      id: Date.now(),
+      name,
+      createdAt: new Date().toISOString(),
+    }
+
+    const updatedProfiles = [...profiles, newProfile]
+    setProfiles(updatedProfiles)
+    await saveProfiles(updatedProfiles)
+
+    // Переключаемся на новый профиль
+    setCurrentProfileId(newProfile.id)
+  }
+
+  const handleDeleteProfile = async (profileId) => {
+    // Удаляем профиль из списка
+    const updatedProfiles = profiles.filter((p) => p.id !== profileId)
+    setProfiles(updatedProfiles)
+    await saveProfiles(updatedProfiles)
+
+    // Удаляем данные профиля
+    await clearAllData(profileId)
+
+    // Переключаемся на первый доступный профиль
+    if (updatedProfiles.length > 0) {
+      setCurrentProfileId(updatedProfiles[0].id)
+    } else {
+      // Если профилей не осталось, создаем новый дефолтный
+      const defaultProfile = {
+        id: Date.now(),
+        name: "Основной профиль",
+        createdAt: new Date().toISOString(),
+      }
+      setProfiles([defaultProfile])
+      setCurrentProfileId(defaultProfile.id)
+      await saveProfiles([defaultProfile])
+    }
+  }
+
   // Функции для экспорта/импорта данных
   const handleExportData = () => {
     const data = {
+      profile: userProfile,
       workouts,
       goals,
-      userProfile,
     }
 
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
@@ -467,7 +553,7 @@ export default function FitnessTracker() {
 
     const a = document.createElement("a")
     a.href = url
-    a.download = `fittrack-data-${new Date().toISOString().split("T")[0]}.json`
+    a.download = `fittrack-profile-${currentProfileId}-${new Date().toISOString().split("T")[0]}.json`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -483,13 +569,30 @@ export default function FitnessTracker() {
     if (!file) return
 
     const reader = new FileReader()
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = JSON.parse(e.target.result)
 
-        if (data.workouts) setWorkouts(data.workouts)
-        if (data.goals) setGoals(data.goals)
-        if (data.userProfile) setUserProfile(data.userProfile)
+        if (data.profile) {
+          // Обновляем текущий профиль
+          const updatedProfile = { ...data.profile, id: currentProfileId }
+          setUserProfile(updatedProfile)
+          await saveUserProfile(updatedProfile)
+        }
+
+        if (data.workouts) {
+          // Добавляем profileId к тренировкам
+          const updatedWorkouts = data.workouts.map((w) => ({ ...w, profileId: currentProfileId }))
+          setWorkouts(updatedWorkouts)
+          await saveWorkouts(updatedWorkouts, currentProfileId)
+        }
+
+        if (data.goals) {
+          // Добавляем profileId к целям
+          const updatedGoals = data.goals.map((g) => ({ ...g, profileId: currentProfileId }))
+          setGoals(updatedGoals)
+          await saveGoals(updatedGoals, currentProfileId)
+        }
 
         toast({
           title: "Данные импортированы",
@@ -509,15 +612,16 @@ export default function FitnessTracker() {
     event.target.value = null
   }
 
-  // Функция для очистки всех данных
+  // Функция очистки данных
   const handleClearAllData = async () => {
-    if (confirm("Вы уверены, что хотите удалить все данные? Это действие нельзя отменить.")) {
+    if (confirm("Вы уверены, что хотите удалить все данные текущего профиля? Это действие нельзя отменить.")) {
       try {
-        await clearAllData()
+        await clearAllData(currentProfileId)
 
         setWorkouts([])
         setGoals([])
         setUserProfile({
+          id: currentProfileId,
           weight: 70,
           height: 175,
           calorieTarget: 2500,
@@ -526,14 +630,14 @@ export default function FitnessTracker() {
 
         toast({
           title: "Данные удалены",
-          description: "Все данные приложения были удалены",
+          description: "Все данные профиля были удалены",
           variant: "destructive",
         })
       } catch (error) {
         console.error("Error clearing data:", error)
         toast({
           title: "Ошибка",
-          description: "Не удалось удалить все данные",
+          description: "Не удалось удалить данные",
           variant: "destructive",
         })
       }
@@ -613,6 +717,13 @@ export default function FitnessTracker() {
               <p className="text-muted-foreground">Отслеживайте, анализируйте и улучшайте свой путь к фитнесу</p>
             </div>
             <div className="flex items-center gap-2">
+              <ProfileSwitcher
+                profiles={profiles}
+                currentProfileId={currentProfileId}
+                onSwitchProfile={handleSwitchProfile}
+                onCreateProfile={handleCreateProfile}
+                onDeleteProfile={handleDeleteProfile}
+              />
               <ThemeToggle />
               <Button variant="outline" size="icon" onClick={() => setActiveTab("settings")}>
                 <Settings className="h-4 w-4" />
@@ -624,6 +735,18 @@ export default function FitnessTracker() {
         <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
           {/* Боковая навигация */}
           <div className="space-y-4">
+            <Card>
+              <CardContent className="p-4">
+                <ProfileSwitcher
+                  profiles={profiles}
+                  currentProfileId={currentProfileId}
+                  onSwitchProfile={handleSwitchProfile}
+                  onCreateProfile={handleCreateProfile}
+                  onDeleteProfile={handleDeleteProfile}
+                />
+              </CardContent>
+            </Card>
+
             <Card>
               <CardContent className="p-4">
                 <nav className="space-y-1">
@@ -695,7 +818,9 @@ export default function FitnessTracker() {
                     <User className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <h3 className="font-medium">{userProfile.name || "Пользователь"}</h3>
+                    <h3 className="font-medium">
+                      {profiles.find((p) => p.id === currentProfileId)?.name || "Пользователь"}
+                    </h3>
                     <p className="text-xs text-muted-foreground">
                       {userProfile.gender === "male" ? "Мужчина" : userProfile.gender === "female" ? "Женщина" : ""}
                       {userProfile.age ? `, ${userProfile.age} лет` : ""}
@@ -1173,74 +1298,67 @@ export default function FitnessTracker() {
                               </Select>
                             </div>
                             <div className="flex items-center gap-2">
-                              <Search className="h-4 w-4 text-muted-foreground" />
                               <Input
-                                type="search"
-                                id="search"
-                                placeholder="Поиск тренировок..."
+                                placeholder="Поиск..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full md:w-[250px]"
+                                className="w-[200px]"
                               />
                             </div>
                           </div>
 
-                          {filteredWorkouts.length > 0 ? (
-                            <div className="space-y-3">
-                              {filteredWorkouts.map((workout) => (
-                                <div
-                                  key={workout.id}
-                                  className="bg-background rounded-lg p-4 flex flex-col md:flex-row md:items-center justify-between gap-4"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="bg-primary/10 rounded-full p-2">
-                                      {getWorkoutTypeIcon(workout.type)}
-                                    </div>
-                                    <div>
-                                      <h4 className="font-medium">{workout.type}</h4>
-                                      <p className="text-xs text-muted-foreground">{formatDate(workout.date)}</p>
-                                    </div>
+                          <div className="space-y-2">
+                            {filteredWorkouts.map((workout) => (
+                              <div
+                                key={workout.id}
+                                className="bg-background rounded-lg p-4 flex items-center justify-between"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="bg-primary/10 rounded-full p-2">
+                                    {getWorkoutTypeIcon(workout.type)}
                                   </div>
-                                  <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2">
-                                      <Clock className="h-4 w-4 text-muted-foreground" />
-                                      <span className="text-sm">{workout.duration} мин</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <Flame className="h-4 w-4 text-muted-foreground" />
-                                      <span className="text-sm">{workout.calories} кал</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 p-0"
-                                        onClick={() => handleEditWorkout(workout)}
-                                      >
-                                        <Edit className="h-4 w-4" />
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-8 w-8 p-0 text-destructive"
-                                        onClick={() => handleDeleteWorkout(workout.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </div>
+                                  <div>
+                                    <h4 className="font-medium">{workout.type}</h4>
+                                    <p className="text-sm text-muted-foreground">{formatDate(workout.date)}</p>
+                                    {workout.notes && (
+                                      <p className="text-xs text-muted-foreground mt-1">{workout.notes}</p>
+                                    )}
                                   </div>
                                 </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-center py-8 text-muted-foreground">
-                              <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                              <p>Тренировки не найдены</p>
-                              <p className="text-sm">
-                                Попробуйте изменить параметры поиска или добавьте новую тренировку
-                              </p>
-                            </div>
-                          )}
+                                <div className="flex items-center gap-4">
+                                  <div className="text-right">
+                                    <p className="text-sm font-medium">{workout.duration} мин</p>
+                                    <p className="text-xs text-muted-foreground">{workout.calories} кал</p>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      onClick={() => handleEditWorkout(workout)}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-destructive hover:text-destructive"
+                                      onClick={() => handleDeleteWorkout(workout.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            {filteredWorkouts.length === 0 && (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                                <p>Тренировки не найдены</p>
+                                <p className="text-sm">Попробуйте изменить фильтры или добавить новую тренировку</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -1255,24 +1373,22 @@ export default function FitnessTracker() {
                           <Target className="h-5 w-5 text-primary" />
                           <CardTitle>Управление целями</CardTitle>
                         </div>
-                        <CardDescription>Установите и отслеживайте свои фитнес-цели</CardDescription>
+                        <CardDescription>Создавайте и отслеживайте свои фитнес-цели</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-6">
                         <div className="bg-primary/5 rounded-lg p-6 space-y-6">
-                          <h3 className="text-lg font-medium">Добавить новую цель</h3>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                              <Label htmlFor="title">Название цели</Label>
+                              <Label htmlFor="goal-title">Название цели</Label>
                               <Input
-                                type="text"
-                                id="title"
+                                id="goal-title"
                                 value={newGoal.title}
                                 onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
-                                placeholder="Например: Пробежать 30 км за неделю"
+                                placeholder="Например: Сжечь 1000 калорий"
                               />
                             </div>
                             <div className="space-y-2">
-                              <Label htmlFor="targetType">Тип цели</Label>
+                              <Label htmlFor="goal-type">Тип цели</Label>
                               <Select
                                 value={newGoal.targetType}
                                 onValueChange={(value) => setNewGoal({ ...newGoal, targetType: value })}
@@ -1282,110 +1398,77 @@ export default function FitnessTracker() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="calories">Калории</SelectItem>
-                                  <SelectItem value="frequency">Частота</SelectItem>
-                                  <SelectItem value="duration">Продолжительность</SelectItem>
+                                  <SelectItem value="duration">Продолжительность (мин)</SelectItem>
+                                  <SelectItem value="frequency">Количество тренировок</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
-                              <Label htmlFor="targetValue">Целевое значение</Label>
+                              <Label htmlFor="goal-value">Целевое значение</Label>
                               <Input
                                 type="number"
-                                id="targetValue"
+                                id="goal-value"
                                 value={newGoal.targetValue}
                                 onChange={(e) =>
                                   setNewGoal({ ...newGoal, targetValue: Number.parseInt(e.target.value) })
                                 }
                               />
                             </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="goal-deadline">Срок достижения</Label>
+                              <Input
+                                type="date"
+                                id="goal-deadline"
+                                value={newGoal.deadline}
+                                onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
+                              />
+                            </div>
                           </div>
 
-                          <div className="space-y-2">
-                            <Label htmlFor="deadline">Срок выполнения</Label>
-                            <Input
-                              type="date"
-                              id="deadline"
-                              value={newGoal.deadline}
-                              onChange={(e) => setNewGoal({ ...newGoal, deadline: e.target.value })}
-                            />
-                          </div>
-
-                          <Button onClick={handleAddGoal}>
-                            <PlusCircle className="mr-2 h-4 w-4" />
+                          <Button onClick={handleAddGoal} className="w-full md:w-auto">
+                            <Save className="mr-2 h-4 w-4" />
                             Добавить цель
                           </Button>
                         </div>
 
-                        <Separator />
-
                         <div className="space-y-4">
-                          <h3 className="text-lg font-medium">Текущие цели</h3>
-                          {goals.length > 0 ? (
-                            <div className="space-y-4">
-                              {goals.map((goal) => (
-                                <div key={goal.id} className="bg-primary/5 rounded-lg p-4">
-                                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                    <div className="flex items-center gap-3">
-                                      <div className="bg-background rounded-full p-2">
-                                        <Target className="h-4 w-4" />
-                                      </div>
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <h4 className="font-medium">{goal.title}</h4>
-                                          {goal.completed ? (
-                                            <Badge variant="success" className="text-xs">
-                                              Выполнено
-                                            </Badge>
-                                          ) : (
-                                            <Badge variant="outline" className="text-xs">
-                                              В процессе
-                                            </Badge>
-                                          )}
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">
-                                          Срок: {formatDate(goal.deadline)}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                      <div>
-                                        <div className="text-sm mb-1">
-                                          {goal.targetType === "calories" && `${goal.targetValue} калорий`}
-                                          {goal.targetType === "frequency" && `${goal.targetValue} тренировок`}
-                                          {goal.targetType === "duration" && `${goal.targetValue} минут`}
-                                        </div>
-                                        <Progress value={goal.completed ? 100 : 50} className="h-2 w-[150px]" />
-                                      </div>
-                                      <div className="flex items-center gap-2">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-8 w-8 p-0"
-                                          onClick={() => handleToggleGoalCompletion(goal.id)}
-                                        >
-                                          <Check className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="h-8 w-8 p-0 text-destructive"
-                                          onClick={() => handleDeleteGoal(goal.id)}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </div>
+                          <h3 className="text-lg font-medium">Ваши цели</h3>
+                          <div className="space-y-2">
+                            {goals.map((goal) => (
+                              <div
+                                key={goal.id}
+                                className="bg-background rounded-lg p-4 flex items-center justify-between"
+                              >
+                                <div className="flex-1">
+                                  <GoalTracker
+                                    goal={goal}
+                                    workouts={workouts}
+                                    handleToggleGoalCompletion={handleToggleGoalCompletion}
+                                  />
                                 </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="text-center py-8 text-muted-foreground bg-primary/5 rounded-lg">
-                              <Target className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                              <p>У вас пока нет целей</p>
-                              <p className="text-sm">Добавьте цель, чтобы отслеживать свой прогресс</p>
-                            </div>
-                          )}
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive ml-4"
+                                  onClick={() => handleDeleteGoal(goal.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                            {goals.length === 0 && (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <Target className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                                <p>У вас пока нет целей</p>
+                                <p className="text-sm">
+                                  Добавьте свою первую цель, чтобы начать отслеживание прогресса
+                                </p>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -1393,121 +1476,99 @@ export default function FitnessTracker() {
                 )}
 
                 {activeTab === "profile" && (
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center gap-2">
-                        <User className="h-5 w-5 text-primary" />
-                        <CardTitle>Профиль пользователя</CardTitle>
-                      </div>
-                      <CardDescription>Управляйте своими персональными данными</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ProfileEditor userProfile={userProfile} setUserProfile={setUserProfile} />
-                    </CardContent>
-                  </Card>
+                  <div className="space-y-6">
+                    <ProfileEditor userProfile={userProfile} setUserProfile={setUserProfile} />
+                    <WeightTracker userProfile={userProfile} setUserProfile={setUserProfile} />
+                  </div>
                 )}
 
                 {activeTab === "settings" && (
-                  <div className="space-y-6">
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center gap-2">
-                          <Settings className="h-5 w-5 text-primary" />
-                          <CardTitle>Настройки</CardTitle>
-                        </div>
-                        <CardDescription>Настройте ваш опыт использования приложения</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <Tabs defaultValue="app">
-                          <TabsList className="grid grid-cols-2 mb-6">
-                            <TabsTrigger value="app">Приложение</TabsTrigger>
-                            <TabsTrigger value="weight">Вес</TabsTrigger>
-                          </TabsList>
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <Settings className="h-5 w-5 text-primary" />
+                        <CardTitle>Настройки</CardTitle>
+                      </div>
+                      <CardDescription>Управление данными и настройками приложения</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="bg-primary/5 rounded-lg p-6 space-y-6">
+                        <div>
+                          <h3 className="text-lg font-medium mb-4">Управление данными</h3>
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-medium">Экспорт данных</h4>
+                                <p className="text-sm text-muted-foreground">Сохранить все данные профиля в файл</p>
+                              </div>
+                              <Button onClick={handleExportData}>Экспортировать</Button>
+                            </div>
 
-                          <TabsContent value="app" className="space-y-6">
-                            <div className="bg-primary/5 rounded-lg p-6 space-y-6">
-                              <h3 className="text-lg font-medium">Основные настройки</h3>
-                              <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <div className="space-y-0.5">
-                                    <Label>Темный режим</Label>
-                                    <p className="text-sm text-muted-foreground">
-                                      Переключение между светлой и темной темой
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <ThemeToggle />
-                                  </div>
-                                </div>
+                            <Separator />
 
-                                <Separator />
-
-                                <div className="flex items-center justify-between">
-                                  <div className="space-y-0.5">
-                                    <Label>Уведомления</Label>
-                                    <p className="text-sm text-muted-foreground">Включить напоминания о тренировках</p>
-                                  </div>
-                                  <div>
-                                    <Switch defaultChecked />
-                                  </div>
-                                </div>
-
-                                <div className="pt-4 border-t">
-                                  <h3 className="text-sm font-medium mb-2">Управление данными</h3>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    <Button
-                                      variant="outline"
-                                      className="w-full justify-start"
-                                      onClick={handleExportData}
-                                    >
-                                      <Download className="mr-2 h-4 w-4" />
-                                      Экспорт данных
-                                    </Button>
-                                    <div className="relative">
-                                      <Button
-                                        variant="outline"
-                                        className="w-full justify-start"
-                                        onClick={() => document.getElementById("import-file-settings").click()}
-                                      >
-                                        <FileUp className="mr-2 h-4 w-4" />
-                                        Импорт данных
-                                      </Button>
-                                      <input
-                                        id="import-file-settings"
-                                        type="file"
-                                        accept=".json"
-                                        className="hidden"
-                                        onChange={handleImportData}
-                                      />
-                                    </div>
-                                    <Button
-                                      variant="destructive"
-                                      className="w-full justify-start mt-2 md:col-span-2"
-                                      onClick={handleClearAllData}
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Удалить все данные
-                                    </Button>
-                                  </div>
-                                </div>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-medium">Импорт данных</h4>
+                                <p className="text-sm text-muted-foreground">Загрузить данные из файла</p>
+                              </div>
+                              <div>
+                                <input
+                                  type="file"
+                                  accept=".json"
+                                  onChange={handleImportData}
+                                  className="hidden"
+                                  id="import-file"
+                                />
+                                <Button asChild>
+                                  <label htmlFor="import-file" className="cursor-pointer">
+                                    Импортировать
+                                  </label>
+                                </Button>
                               </div>
                             </div>
-                          </TabsContent>
 
-                          <TabsContent value="weight">
-                            <WeightTracker userProfile={userProfile} setUserProfile={setUserProfile} />
-                          </TabsContent>
-                        </Tabs>
-                      </CardContent>
-                    </Card>
-                  </div>
+                            <Separator />
+
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-medium text-destructive">Очистить все данные</h4>
+                                <p className="text-sm text-muted-foreground">Удалить все данные текущего профиля</p>
+                              </div>
+                              <Button variant="destructive" onClick={handleClearAllData}>
+                                Очистить
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <Separator />
+
+                        <div>
+                          <h3 className="text-lg font-medium mb-4">О приложении</h3>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Версия:</span>
+                              <span className="text-sm font-medium">1.0.0</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Разработчик:</span>
+                              <span className="text-sm font-medium">FitTrack Pro Team</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-sm text-muted-foreground">Последнее обновление:</span>
+                              <span className="text-sm font-medium">Декабрь 2024</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
               </motion.div>
             </AnimatePresence>
           </div>
         </div>
       </div>
-      <Toaster />
     </div>
   )
 }
